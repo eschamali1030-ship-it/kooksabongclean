@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>관리자 페이지</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <h1>관리자 페이지</h1>
+      <p>예약 현황을 관리하고 초기화할 수 있습니다.</p>
+    </header>
+
+    <section class="today-card">
+      <h2>관리자 로그인</h2>
+      <input type="password" id="adminPassword" placeholder="관리자 비밀번호 입력" />
+      <button onclick="adminLogin()" class="primary-btn">로그인</button>
+      <p id="loginMessage" style="margin-top:10px;"></p>
+    </section>
+
+    <section id="adminPanel" class="hidden">
+      <div class="top-bar">
+        <div>
+          <span class="badge">관리자 모드</span>
+          <span class="user-info">예약 관리 중</span>
+        </div>
+        <a href="index.html"><button class="secondary-btn">메인으로 돌아가기</button></a>
+      </div>
+
+      <section class="entry-box">
+        <h3>전체 예약 현황</h3>
+        <div id="adminReservationList"></div>
+      </section>
+
+      <section class="entry-box">
+        <h3>관리 기능</h3>
+        <button onclick="resetAll()" class="back-btn">전체 예약 초기화</button>
+        <button onclick="downloadMonthlyExcel()" class="primary-btn" style="margin-top:10px;">월별 예약표 CSV 다운로드</button>
+      </section>
+    </section>
+  </div>
+
+  <script>
+    let adminPassword = "";
+
+    async function adminLogin() {
+      const password = document.getElementById("adminPassword").value;
+      const loginMessage = document.getElementById("loginMessage");
+
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        loginMessage.textContent = data.message;
+        loginMessage.style.color = "yellow";
+        return;
+      }
+
+      adminPassword = password;
+      loginMessage.textContent = "로그인 성공";
+      loginMessage.style.color = "white";
+      document.getElementById("adminPanel").classList.remove("hidden");
+      loadAllReservations();
+    }
+
+    async function loadAllReservations() {
+      const res = await fetch("/api/admin/all");
+      const data = await res.json();
+
+      const box = document.getElementById("adminReservationList");
+      const reservations = data.reservations;
+      const dates = Object.keys(reservations).sort();
+
+      if (!dates.length) {
+        box.innerHTML = "<p>예약이 없습니다.</p>";
+        return;
+      }
+
+      box.innerHTML = dates.map(date => `
+        <div class="reservation-card">
+          <div>
+            <strong>${date}</strong><br/>
+            예약자: ${reservations[date].join(", ")}
+          </div>
+          <div class="reservation-actions">
+            <button class="back-btn" onclick="deleteDate('${date}')">이 날짜 삭제</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function deleteDate(date) {
+      if (!confirm(`${date} 예약을 삭제할까요?`)) return;
+
+      const res = await fetch("/api/admin/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword, date })
+      });
+
+      const data = await res.json();
+      alert(data.message);
+      loadAllReservations();
+    }
+
+    async function resetAll() {
+      if (!confirm("전체 예약을 초기화할까요?")) return;
+
+      const res = await fetch("/api/admin/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword })
+      });
+
+      const data = await res.json();
+      alert(data.message);
+      loadAllReservations();
+    }
+
+    function downloadMonthlyExcel() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      window.location.href = `/api/admin/export-csv?year=${year}&month=${month}`;
+    }
+  </script>
+</body>
+</html>
