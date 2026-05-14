@@ -38,8 +38,8 @@ async function initDb() {
   const result = await pool.query(`SELECT COUNT(*)::int AS count FROM students`);
   if (result.rows[0].count === 0) {
     const defaultStudents = [
-      "A","B","C","D","E","F","G","H","I","J","K","L","M",
-      "N","O","P","Q","R","S","T","U","V","W","X","Y","Z"
+      "강하엘","고은정","권동익","김동률","김선중","김승유","남주원","박건후","박선호","박세현","박정현","박지이","방소윤",
+      "송연수","신은채","염하늘","윤지우","이건호","이서윤","이윤아","이준서","장예림","최민준","최진욱","한예현"
     ];
 
     for (const student of defaultStudents) {
