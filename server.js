@@ -10,11 +10,44 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const ADMIN_PASSWORD = "1030"; // 여기 원하는 비밀번호로 바꾸세요
 
+const DEFAULT_STUDENTS = [
+  "강하엘",
+  "고은정",
+  "권동익",
+  "김동률",
+  "김선중",
+  "김승유",
+  "남주원",
+  "박건후",
+  "박선호",
+  "박세현",
+  "빅장현",
+  "박지이",
+  "방소윤",
+  "송연수",
+  "신은채",
+  "염하늘",
+  "윤지우",
+  "이건호",
+  "이서윤",
+  "이윤아",
+  "이준서",
+  "장예림",
+  "최민준",
+  "최진욱",
+  "한예현"
+];
+
+if (!process.env.DATABASE_URL) {
+  console.error("DATABASE_URL이 설정되지 않았습니다.");
+  console.error("로컬에서 실행 중이라면 PostgreSQL이 없어서 실행할 수 없습니다.");
+  console.error("Render 환경변수에 DATABASE_URL을 넣고 Render에서 실행하세요.");
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL
-    ? { rejectUnauthorized: false }
-    : false
+  ssl: { rejectUnauthorized: false }
 });
 
 async function initDb() {
@@ -35,17 +68,15 @@ async function initDb() {
     );
   `);
 
-  const result = await pool.query(`SELECT COUNT(*)::int AS count FROM students`);
-  if (result.rows[0].count === 0) {
-    const defaultStudents = [
-      "A","B","C","D","E","F","G","H","I","J","K","L","M",
-      "N","O","P","Q","R","S","T","U","V","W","X","Y","Z"
-    ];
-
-    for (const student of defaultStudents) {
-      await pool.query(`INSERT INTO students (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`, [student]);
-    }
+const result = await pool.query(`SELECT COUNT(*)::int AS count FROM students`);
+if (result.rows[0].count === 0) {
+  for (const student of DEFAULT_STUDENTS) {
+    await pool.query(
+      `INSERT INTO students (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
+      [student]
+    );
   }
+}
 }
 
 async function getStudents() {
@@ -323,6 +354,31 @@ app.post("/api/admin/delete", async (req, res) => {
     res.status(500).json({ message: "삭제 실패" });
   }
 });
+
+app.post("/api/admin/reset-students", async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ message: "관리자 인증 실패" });
+    }
+
+    await pool.query(`DELETE FROM students`);
+
+    for (const student of DEFAULT_STUDENTS) {
+      await pool.query(
+        `INSERT INTO students (name) VALUES ($1)`,
+        [student]
+      );
+    }
+
+    res.json({ message: "학생 목록이 새 이름으로 초기화되었습니다." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "학생 목록 초기화 실패" });
+  }
+});
+
 
 app.post("/api/admin/reset", async (req, res) => {
   try {
