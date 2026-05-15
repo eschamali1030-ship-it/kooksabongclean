@@ -431,13 +431,15 @@ app.get("/api/admin/export-csv", async (req, res) => {
     let csv = "날짜,예약자1,예약자2\n";
     const lastDate = new Date(year, month, 0).getDate();
 
-    for (let day = 1; day <= lastDate; day++) {
-      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const names = reservationMap[dateStr] || [];
-      const name1 = names[0] || "";
-      const name2 = names[1] || "";
-      csv += `${dateStr},${name1},${name2}\n`;
-    }
+for (let day = 1; day <= lastDate; day++) {
+  const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const names = reservationMap[dateStr] || [];
+  const name1 = names[0] || "";
+  const name2 = names[1] || "";
+  const excelDate = `${year}.${String(month).padStart(2, "0")}.${String(day).padStart(2, "0")}.`;
+
+  csv += `="${excelDate}",${name1},${name2}\n`;
+}
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="reservations-${year}-${String(month).padStart(2, "0")}.csv"`);
