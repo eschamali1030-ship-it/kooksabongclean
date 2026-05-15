@@ -74,7 +74,8 @@ async function loadStudents() {
   const res = await fetch("/api/students");
   const data = await res.json();
 
-  studentSelect.innerHTML = `<option value="">학생 선택</option>` +
+  studentSelect.innerHTML =
+    `<option value="">학생 선택</option>` +
     data.students.map(s => `<option value="${s}">${s}</option>`).join("");
 }
 
@@ -177,20 +178,20 @@ function showDateDetails(dateStr, names, isWeekend, isHoliday, holidayName) {
   html += `<p><strong>예약자:</strong> ${names.length ? names.join(", ") : "없음"}</p>`;
   html += `<p><strong>현재 상태:</strong> ${names.length}/2명 예약</p>`;
 
-if (currentMode === "reserve") {
-  const alreadyReserved = names.includes(currentUser);
-  const isFull = names.length >= 2;
+  if (currentMode === "reserve") {
+    const alreadyReserved = names.includes(currentUser);
+    const isFull = names.length >= 2;
 
-  if (alreadyReserved) {
-    html += `<p>이미 이 날짜를 예약했습니다. 예약 취소는 관리자만 가능합니다.</p>`;
-  } else if (!isFull) {
-    html += `<button class="primary-btn" onclick="makeReservation('${dateStr}')">이 날짜 예약하기</button>`;
+    if (alreadyReserved) {
+      html += `<p>이미 이 날짜를 예약했습니다. 예약 취소는 관리자만 가능합니다.</p>`;
+    } else if (!isFull) {
+      html += `<button class="primary-btn" onclick="makeReservation('${dateStr}')">이 날짜 예약하기</button>`;
+    } else {
+      html += `<p>이 날짜는 이미 마감되었습니다.</p>`;
+    }
   } else {
-    html += `<p>이 날짜는 이미 마감되었습니다.</p>`;
+    html += `<p>조회 모드입니다.</p>`;
   }
-} else {
-  html += `<p>조회 모드입니다.</p>`;
-}
 
   selectedDateInfo.innerHTML = html;
 }

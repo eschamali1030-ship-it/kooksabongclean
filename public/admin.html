@@ -34,120 +34,120 @@
         <div id="adminReservationList"></div>
       </section>
 
-<section class="entry-box">
-  <h3>관리 기능</h3>
-  <button onclick="resetAll()" class="back-btn">전체 예약 초기화</button>
-  <button onclick="downloadMonthlyExcel()" class="primary-btn" style="margin-top:10px;">
-    월별 예약표 CSV 다운로드
-  </button>
-  <button onclick="resetStudents()" class="secondary-btn" style="margin-top:10px;">
-    학생 목록 새 이름으로 초기화
-  </button>
-</section>
+      <section class="entry-box">
+        <h3>관리 기능</h3>
+        <button onclick="resetAll()" class="back-btn">전체 예약 초기화</button>
+        <button onclick="downloadMonthlyExcel()" class="primary-btn" style="margin-top:10px;">
+          월별 예약표 CSV 다운로드
+        </button>
+        <button onclick="resetStudents()" class="secondary-btn" style="margin-top:10px;">
+          학생 목록 새 이름으로 초기화
+        </button>
+      </section>
     </section>
   </div>
 
-<script>
-  let adminPassword = "";
+  <script>
+    let adminPassword = "";
 
-  async function adminLogin() {
-    const password = document.getElementById("adminPassword").value;
-    const loginMessage = document.getElementById("loginMessage");
+    async function adminLogin() {
+      const password = document.getElementById("adminPassword").value;
+      const loginMessage = document.getElementById("loginMessage");
 
-    const res = await fetch("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password })
-    });
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok) {
-      loginMessage.textContent = data.message;
-      loginMessage.style.color = "yellow";
-      return;
+      if (!res.ok) {
+        loginMessage.textContent = data.message;
+        loginMessage.style.color = "yellow";
+        return;
+      }
+
+      adminPassword = password;
+      loginMessage.textContent = "로그인 성공";
+      loginMessage.style.color = "white";
+      document.getElementById("adminPanel").classList.remove("hidden");
+      loadAllReservations();
     }
 
-    adminPassword = password;
-    loginMessage.textContent = "로그인 성공";
-    loginMessage.style.color = "white";
-    document.getElementById("adminPanel").classList.remove("hidden");
-    loadAllReservations();
-  }
+    async function loadAllReservations() {
+      const res = await fetch("/api/admin/all");
+      const data = await res.json();
 
-  async function loadAllReservations() {
-    const res = await fetch("/api/admin/all");
-    const data = await res.json();
+      const box = document.getElementById("adminReservationList");
+      const reservations = data.reservations;
+      const dates = Object.keys(reservations).sort();
 
-    const box = document.getElementById("adminReservationList");
-    const reservations = data.reservations;
-    const dates = Object.keys(reservations).sort();
+      if (!dates.length) {
+        box.innerHTML = "<p>예약이 없습니다.</p>";
+        return;
+      }
 
-    if (!dates.length) {
-      box.innerHTML = "<p>예약이 없습니다.</p>";
-      return;
+      box.innerHTML = dates.map(date => `
+        <div class="reservation-card">
+          <div>
+            <strong>${date}</strong><br/>
+            예약자: ${reservations[date].join(", ")}
+          </div>
+          <div class="reservation-actions">
+            <button class="back-btn" onclick="deleteDate('${date}')">이 날짜 삭제</button>
+          </div>
+        </div>
+      `).join("");
     }
 
-    box.innerHTML = dates.map(date => `
-      <div class="reservation-card">
-        <div>
-          <strong>${date}</strong><br/>
-          예약자: ${reservations[date].join(", ")}
-        </div>
-        <div class="reservation-actions">
-          <button class="back-btn" onclick="deleteDate('${date}')">이 날짜 삭제</button>
-        </div>
-      </div>
-    `).join("");
-  }
+    async function deleteDate(date) {
+      if (!confirm(`${date} 예약을 삭제할까요?`)) return;
 
-  async function deleteDate(date) {
-    if (!confirm(`${date} 예약을 삭제할까요?`)) return;
+      const res = await fetch("/api/admin/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword, date })
+      });
 
-    const res = await fetch("/api/admin/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: adminPassword, date })
-    });
+      const data = await res.json();
+      alert(data.message);
+      loadAllReservations();
+    }
 
-    const data = await res.json();
-    alert(data.message);
-    loadAllReservations();
-  }
+    async function resetAll() {
+      if (!confirm("전체 예약을 초기화할까요?")) return;
 
-  async function resetAll() {
-    if (!confirm("전체 예약을 초기화할까요?")) return;
+      const res = await fetch("/api/admin/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword })
+      });
 
-    const res = await fetch("/api/admin/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: adminPassword })
-    });
+      const data = await res.json();
+      alert(data.message);
+      loadAllReservations();
+    }
 
-    const data = await res.json();
-    alert(data.message);
-    loadAllReservations();
-  }
+    async function resetStudents() {
+      if (!confirm("학생 목록을 새 이름 목록으로 바꿀까요?")) return;
 
-  async function resetStudents() {
-    if (!confirm("학생 목록을 새 이름 목록으로 바꿀까요?")) return;
+      const res = await fetch("/api/admin/reset-students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword })
+      });
 
-    const res = await fetch("/api/admin/reset-students", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: adminPassword })
-    });
+      const data = await res.json();
+      alert(data.message);
+    }
 
-    const data = await res.json();
-    alert(data.message);
-  }
-
-  function downloadMonthlyExcel() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    window.location.href = `/api/admin/export-csv?year=${year}&month=${month}`;
-  }
-</script>
+    function downloadMonthlyExcel() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      window.location.href = `/api/admin/export-csv?year=${year}&month=${month}`;
+    }
+  </script>
 </body>
 </html>
