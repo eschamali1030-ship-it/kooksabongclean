@@ -8,16 +8,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-/**
- * 관리자 비밀번호
- * 원하는 비밀번호로 바꾸세요.
- */
 const ADMIN_PASSWORD = "1030";
 
-/**
- * 기본 학생 목록
- * 여기 이름을 원하는 대로 바꾸면 됩니다.
- */
 const DEFAULT_STUDENTS = [
   "강하엘",
   "고은정",
@@ -75,6 +67,13 @@ async function initDb() {
     );
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS daily_cleaners (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL UNIQUE
+    );
+  `);
+
   const result = await pool.query(`SELECT COUNT(*)::int AS count FROM students`);
   if (result.rows[0].count === 0) {
     for (const student of DEFAULT_STUDENTS) {
@@ -88,6 +87,11 @@ async function initDb() {
 
 async function getStudents() {
   const result = await pool.query(`SELECT name FROM students ORDER BY name ASC`);
+  return result.rows.map(row => row.name);
+}
+
+async function getDailyCleaners() {
+  const result = await pool.query(`SELECT name FROM daily_cleaners ORDER BY name ASC`);
   return result.rows.map(row => row.name);
 }
 
@@ -175,6 +179,16 @@ app.get("/api/students", async (req, res) => {
   }
 });
 
+app.get("/api/daily-cleaners", async (req, res) => {
+  try {
+    const cleaners = await getDailyCleaners();
+    res.json({ cleaners });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "고정 청소 담당 조회 실패" });
+  }
+});
+
 app.get("/api/reservations", async (req, res) => {
   try {
     const year = Number(req.query.year);
@@ -220,20 +234,33 @@ app.get("/api/reservations", async (req, res) => {
 app.get("/api/today", async (req, res) => {
   try {
     const today = getTodayStr();
+    const holidayName = await getHolidayName(today);
+    const blocked = isWeekend(today) || Boolean(holidayName);
 
-    const result = await pool.query(
+    if (blocked) {
+      return res.json({
+        date: today,
+        cleaners: [],
+        blocked: true,
+        holidayName
+      });
+    }
+
+    const reservedResult = await pool.query(
       `SELECT name FROM reservations WHERE date = $1 ORDER BY name ASC`,
       [today]
     );
 
-    const cleaners = result.rows.map(row => row.name);
-    const holidayName = await getHolidayName(today);
+    const reservedCleaners = reservedResult.rows.map(row => row.name);
+    const dailyCleaners = await getDailyCleaners();
+
+    const merged = [...new Set([...dailyCleaners, ...reservedCleaners])];
 
     res.json({
       date: today,
-      cleaners,
-      blocked: isWeekend(today) || Boolean(holidayName),
-      holidayName
+      cleaners: merged,
+      blocked: false,
+      holidayName: null
     });
   } catch (error) {
     console.error(error);
@@ -397,10 +424,59 @@ app.post("/api/admin/reset-students", async (req, res) => {
       );
     }
 
+    await pool.query(`
+      DELETE FROM daily_cleaners
+      WHERE name NOT IN (SELECT name FROM students)
+    `);
+
     res.json({ message: "학생 목록이 새 이름으로 초기화되었습니다." });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "학생 목록 초기화 실패" });
+  }
+});
+
+app.get("/api/admin/daily-cleaners", async (req, res) => {
+  try {
+    const students = await getStudents();
+    const dailyCleaners = await getDailyCleaners();
+
+    res.json({
+      students,
+      dailyCleaners
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "고정 청소 담당 설정 조회 실패" });
+  }
+});
+
+app.post("/api/admin/daily-cleaners", async (req, res) => {
+  try {
+    const { password, names } = req.body;
+
+    if (password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ message: "관리자 인증 실패" });
+    }
+
+    const students = await getStudents();
+    const safeNames = Array.isArray(names)
+      ? names.filter(name => students.includes(name))
+      : [];
+
+    await pool.query(`DELETE FROM daily_cleaners`);
+
+    for (const name of safeNames) {
+      await pool.query(
+        `INSERT INTO daily_cleaners (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
+        [name]
+      );
+    }
+
+    res.json({ message: "고정 청소 담당이 저장되었습니다." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "고정 청소 담당 저장 실패" });
   }
 });
 
@@ -431,15 +507,15 @@ app.get("/api/admin/export-csv", async (req, res) => {
     let csv = "날짜,예약자1,예약자2\n";
     const lastDate = new Date(year, month, 0).getDate();
 
-for (let day = 1; day <= lastDate; day++) {
-  const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  const names = reservationMap[dateStr] || [];
-  const name1 = names[0] || "";
-  const name2 = names[1] || "";
-  const excelDate = `${year}.${String(month).padStart(2, "0")}.${String(day).padStart(2, "0")}.`;
+    for (let day = 1; day <= lastDate; day++) {
+      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const names = reservationMap[dateStr] || [];
+      const name1 = names[0] || "";
+      const name2 = names[1] || "";
+      const excelDate = `${year}.${String(month).padStart(2, "0")}.${String(day).padStart(2, "0")}.`;
 
-  csv += `="${excelDate}",${name1},${name2}\n`;
-}
+      csv += `="${excelDate}",${name1},${name2}\n`;
+    }
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="reservations-${year}-${String(month).padStart(2, "0")}.csv"`);

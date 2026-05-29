@@ -30,6 +30,15 @@
       </div>
 
       <section class="entry-box">
+        <h3>고정 청소 담당 설정</h3>
+        <p>주말과 공휴일을 제외한 매일, 오늘의 청소 담당에 자동 포함됩니다.</p>
+        <div id="dailyCleanerList"></div>
+        <button onclick="saveDailyCleaners()" class="primary-btn" style="margin-top:10px;">
+          고정 청소 담당 저장
+        </button>
+      </section>
+
+      <section class="entry-box">
         <h3>전체 예약 현황</h3>
         <div id="adminReservationList"></div>
       </section>
@@ -72,7 +81,47 @@
       loginMessage.textContent = "로그인 성공";
       loginMessage.style.color = "white";
       document.getElementById("adminPanel").classList.remove("hidden");
+
       loadAllReservations();
+      loadDailyCleaners();
+    }
+
+    async function loadDailyCleaners() {
+      const res = await fetch("/api/admin/daily-cleaners");
+      const data = await res.json();
+
+      const box = document.getElementById("dailyCleanerList");
+      const students = data.students || [];
+      const dailyCleaners = data.dailyCleaners || [];
+
+      if (!students.length) {
+        box.innerHTML = "<p>학생 목록이 없습니다.</p>";
+        return;
+      }
+
+      box.innerHTML = students.map(name => `
+        <label style="display:block; margin-top:8px;">
+          <input type="checkbox" class="daily-cleaner-checkbox" value="${name}" ${dailyCleaners.includes(name) ? "checked" : ""}>
+          ${name}
+        </label>
+      `).join("");
+    }
+
+    async function saveDailyCleaners() {
+      const checked = Array.from(document.querySelectorAll(".daily-cleaner-checkbox:checked"))
+        .map(el => el.value);
+
+      const res = await fetch("/api/admin/daily-cleaners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          names: checked
+        })
+      });
+
+      const data = await res.json();
+      alert(data.message);
     }
 
     async function loadAllReservations() {
@@ -140,6 +189,7 @@
 
       const data = await res.json();
       alert(data.message);
+      loadDailyCleaners();
     }
 
     function downloadMonthlyExcel() {
