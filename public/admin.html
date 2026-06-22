@@ -316,32 +316,40 @@
         return;
       }
 
-      box.innerHTML = dates.map(date => `
-        <div class="reservation-card">
-          <div>
-            <strong>${date}</strong><br/>
-            예약자: ${reservations[date].join(", ")}
-          </div>
-          <div class="reservation-actions">
-            <button class="back-btn" onclick="deleteDate('${date}')">이 날짜 예약 삭제</button>
-          </div>
-        </div>
-      `).join("");
+box.innerHTML = dates.map(date => `
+  <div class="reservation-card">
+    <div>
+      <strong>${date}</strong><br/>
+      예약자: ${reservations[date].join(", ")}
+    </div>
+    <div class="reservation-actions">
+      ${reservations[date].map(name => `
+        <button class="back-btn" style="margin-top:6px;" onclick="deleteReservation('${date}', '${name}')">
+          ${name} 삭제
+        </button>
+      `).join("")}
+    </div>
+  </div>
+`).join("");
     }
 
-    async function deleteDate(date) {
-      if (!confirm(`${date} 예약을 삭제할까요?`)) return;
+async function deleteReservation(date, name) {
+  if (!confirm(`${date}의 ${name} 예약을 삭제할까요?`)) return;
 
-      const res = await fetch("/api/admin/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: adminPassword, date })
-      });
+  const res = await fetch("/api/admin/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      password: adminPassword,
+      date,
+      name
+    })
+  });
 
-      const data = await res.json();
-      alert(data.message);
-      loadAllReservations();
-    }
+  const data = await res.json();
+  alert(data.message);
+  loadAllReservations();
+}
 
     async function resetAll() {
       if (!confirm("전체 예약을 초기화할까요?")) return;
