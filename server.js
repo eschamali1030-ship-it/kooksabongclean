@@ -68,9 +68,12 @@ async function initDb() {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS daily_cleaners (
+    CREATE TABLE IF NOT EXISTS admin_assignments (
       id SERIAL PRIMARY KEY,
-      name VARCHAR(100) NOT NULL UNIQUE
+      date VARCHAR(10) NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(date, name)
     );
   `);
 
@@ -87,11 +90,6 @@ async function initDb() {
 
 async function getStudents() {
   const result = await pool.query(`SELECT name FROM students ORDER BY name ASC`);
-  return result.rows.map(row => row.name);
-}
-
-async function getDailyCleaners() {
-  const result = await pool.query(`SELECT name FROM daily_cleaners ORDER BY name ASC`);
   return result.rows.map(row => row.name);
 }
 
@@ -179,16 +177,6 @@ app.get("/api/students", async (req, res) => {
   }
 });
 
-app.get("/api/daily-cleaners", async (req, res) => {
-  try {
-    const cleaners = await getDailyCleaners();
-    res.json({ cleaners });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "고정 청소 담당 조회 실패" });
-  }
-});
-
 app.get("/api/reservations", async (req, res) => {
   try {
     const year = Number(req.query.year);
@@ -251,10 +239,15 @@ app.get("/api/today", async (req, res) => {
       [today]
     );
 
-    const reservedCleaners = reservedResult.rows.map(row => row.name);
-    const dailyCleaners = await getDailyCleaners();
+    const assignedResult = await pool.query(
+      `SELECT name FROM admin_assignments WHERE date = $1 ORDER BY name ASC`,
+      [today]
+    );
 
-    const merged = [...new Set([...dailyCleaners, ...reservedCleaners])];
+    const reservedCleaners = reservedResult.rows.map(row => row.name);
+    const assignedCleaners = assignedResult.rows.map(row => row.name);
+
+    const merged = [...new Set([...assignedCleaners, ...reservedCleaners])];
 
     res.json({
       date: today,
@@ -340,8 +333,11 @@ app.post("/api/admin/login", (req, res) => {
 
 app.get("/api/admin/all", async (req, res) => {
   try {
+    const today = getTodayStr();
+
     const result = await pool.query(
-      `SELECT date, name FROM reservations ORDER BY date ASC, name ASC`
+      `SELECT date, name FROM reservations WHERE date >= $1 ORDER BY date ASC, name ASC`,
+      [today]
     );
 
     const reservations = {};
@@ -425,7 +421,7 @@ app.post("/api/admin/reset-students", async (req, res) => {
     }
 
     await pool.query(`
-      DELETE FROM daily_cleaners
+      DELETE FROM admin_assignments
       WHERE name NOT IN (SELECT name FROM students)
     `);
 
@@ -436,47 +432,100 @@ app.post("/api/admin/reset-students", async (req, res) => {
   }
 });
 
-app.get("/api/admin/daily-cleaners", async (req, res) => {
+app.get("/api/admin/assignments", async (req, res) => {
   try {
+    const today = getTodayStr();
+
     const students = await getStudents();
-    const dailyCleaners = await getDailyCleaners();
+
+    const result = await pool.query(
+      `SELECT date, name FROM admin_assignments WHERE date >= $1 ORDER BY date ASC, name ASC`,
+      [today]
+    );
+
+    const assignments = {};
+    for (const row of result.rows) {
+      if (!assignments[row.date]) {
+        assignments[row.date] = [];
+      }
+      assignments[row.date].push(row.name);
+    }
 
     res.json({
       students,
-      dailyCleaners
+      assignments
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "고정 청소 담당 설정 조회 실패" });
+    res.status(500).json({ message: "관리자 배정 조회 실패" });
   }
 });
 
-app.post("/api/admin/daily-cleaners", async (req, res) => {
+app.post("/api/admin/assignments", async (req, res) => {
   try {
-    const { password, names } = req.body;
+    const { password, name, dates } = req.body;
 
     if (password !== ADMIN_PASSWORD) {
       return res.status(401).json({ message: "관리자 인증 실패" });
     }
 
-    const students = await getStudents();
-    const safeNames = Array.isArray(names)
-      ? names.filter(name => students.includes(name))
-      : [];
-
-    await pool.query(`DELETE FROM daily_cleaners`);
-
-    for (const name of safeNames) {
-      await pool.query(
-        `INSERT INTO daily_cleaners (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
-        [name]
-      );
+    if (!name || !Array.isArray(dates) || dates.length === 0) {
+      return res.status(400).json({ message: "학생 이름과 날짜 목록이 필요합니다." });
     }
 
-    res.json({ message: "고정 청소 담당이 저장되었습니다." });
+    const students = await getStudents();
+    if (!students.includes(name)) {
+      return res.status(400).json({ message: "등록된 학생만 배정할 수 있습니다." });
+    }
+
+    let successCount = 0;
+
+    for (const date of dates) {
+      if (await isBlockedDate(date)) {
+        continue;
+      }
+
+      try {
+        await pool.query(
+          `INSERT INTO admin_assignments (date, name) VALUES ($1, $2)`,
+          [date, name]
+        );
+        successCount++;
+      } catch (error) {
+        if (error.code !== "23505") {
+          throw error;
+        }
+      }
+    }
+
+    res.json({ message: `${successCount}개의 날짜에 관리자 배정을 저장했습니다.` });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "고정 청소 담당 저장 실패" });
+    res.status(500).json({ message: "관리자 배정 저장 실패" });
+  }
+});
+
+app.post("/api/admin/assignments/delete", async (req, res) => {
+  try {
+    const { password, date, name } = req.body;
+
+    if (password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ message: "관리자 인증 실패" });
+    }
+
+    if (!date || !name) {
+      return res.status(400).json({ message: "date와 name이 필요합니다." });
+    }
+
+    await pool.query(
+      `DELETE FROM admin_assignments WHERE date = $1 AND name = $2`,
+      [date, name]
+    );
+
+    res.json({ message: "관리자 배정 삭제 완료" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "관리자 배정 삭제 실패" });
   }
 });
 
