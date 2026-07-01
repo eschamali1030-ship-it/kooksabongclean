@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>통합 관리자 페이지</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <h1>통합 관리자 페이지</h1>
+      <p>학급 구조 생성, 서브 관리자 비밀번호 설정, 연간 기록 관리</p>
+    </header>
+
+    <section class="today-card">
+      <h2>통합 관리자 로그인</h2>
+      <input type="password" id="superAdminPasswordInput" placeholder="통합 관리자 비밀번호 입력" />
+      <button id="superLoginBtn" class="primary-btn">로그인</button>
+      <p id="superLoginMessage" style="margin-top:10px;"></p>
+    </section>
+
+    <section id="superAdminPanel" class="hidden">
+      <div class="top-bar">
+        <div>
+          <span class="badge">통합 관리자 모드</span>
+          <span class="user-info">전체 시스템 관리 중</span>
+        </div>
+        <a href="index.html"><button class="secondary-btn">메인으로 돌아가기</button></a>
+      </div>
+
+      <section class="entry-box">
+        <h3>학급 구조 생성</h3>
+
+        <label for="gradeCountInput">학년 수</label>
+        <input type="number" id="gradeCountInput" min="1" placeholder="예: 3" />
+
+        <label for="classCountInput">반 수</label>
+        <input type="number" id="classCountInput" min="1" placeholder="예: 5" />
+
+        <button id="setupClassesBtn" class="primary-btn">학급 구조 생성</button>
+      </section>
+
+      <section class="entry-box">
+        <h3>반별 서브 관리자 비밀번호 설정</h3>
+        <div id="superClassList"></div>
+      </section>
+
+      <section class="entry-box">
+        <h3>학년말 기록 정리</h3>
+        <button id="downloadYearCsvBtn" class="primary-btn">1년치 기록 CSV 다운로드</button>
+        <button id="resetYearDataBtn" class="back-btn" style="margin-top:10px;">
+          예약/관리자배정 기록 전체 초기화
+        </button>
+      </section>
+    </section>
+  </div>
+
+  <script>
+    let superAdminPassword = "";
+
+    const superAdminPasswordInput = document.getElementById("superAdminPasswordInput");
+    const superLoginBtn = document.getElementById("superLoginBtn");
+    const superLoginMessage = document.getElementById("superLoginMessage");
+    const superAdminPanel = document.getElementById("superAdminPanel");
+
+    const gradeCountInput = document.getElementById("gradeCountInput");
+    const classCountInput = document.getElementById("classCountInput");
+    const setupClassesBtn = document.getElementById("setupClassesBtn");
+    const superClassList = document.getElementById("superClassList");
+    const downloadYearCsvBtn = document.getElementById("downloadYearCsvBtn");
+    const resetYearDataBtn = document.getElementById("resetYearDataBtn");
+
+    superLoginBtn.addEventListener("click", async () => {
+      const password = superAdminPasswordInput.value;
+
+      const res = await fetch("/api/superadmin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        superLoginMessage.textContent = data.message || "로그인 실패";
+        superLoginMessage.style.color = "yellow";
+        return;
+      }
+
+      superAdminPassword = password;
+      superLoginMessage.textContent = "로그인 성공";
+      superLoginMessage.style.color = "white";
+      superAdminPanel.classList.remove("hidden");
+
+      await loadClassList();
+    });
+
+    setupClassesBtn.addEventListener("click", async () => {
+      const gradeCount = Number(gradeCountInput.value);
+      const classCount = Number(classCountInput.value);
+
+      const res = await fetch("/api/superadmin/setup-classes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: superAdminPassword,
+          gradeCount,
+          classCount
+        })
+      });
+
+      const data = await res.json();
+      alert(data.message);
+      await loadClassList();
+    });
+
+    downloadYearCsvBtn.addEventListener("click", () => {
+      window.location.href = "/api/superadmin/export-year-csv";
+    });
+
+    resetYearDataBtn.addEventListener("click", async () => {
+      if (!confirm("예약과 관리자 배정 기록을 전부 초기화할까요?")) return;
+
+      const res = await fetch("/api/superadmin/reset-year-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: superAdminPassword
+        })
+      });
+
+      const data = await res.json();
+      alert(data.message);
+    });
+
+    async function loadClassList() {
+      const res = await fetch("/api/superadmin/classes");
+      const data = await res.json();
+
+      const classes = data.classes || [];
+
+      if (!classes.length) {
+        superClassList.innerHTML = "<p>아직 생성된 학급이 없습니다.</p>";
+        return;
+      }
+
+      superClassList.innerHTML = classes.map(item => `
+        <div class="reservation-card">
+          <div>
+            <strong>${item.grade}학년 ${item.class_no}반</strong><br/>
+            현재 반 접속 비밀번호: ${item.access_password || "(없음)"}<br/>
+            현재 서브 관리자 비밀번호: ${item.sub_admin_password || "(없음)"}
+          </div>
+          <div class="reservation-actions">
+            <input type="text" id="subpw-${item.grade}-${item.class_no}" placeholder="새 서브 관리자 비밀번호" />
+            <button class="small-action-btn" onclick="saveSubAdminPassword(${item.grade}, ${item.class_no})">저장</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function saveSubAdminPassword(grade, classNo) {
+      const input = document.getElementById(`subpw-${grade}-${classNo}`);
+      const subAdminPassword = input.value;
+
+      const res = await fetch("/api/superadmin/set-subadmin-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: superAdminPassword,
+          grade,
+          classNo,
+          subAdminPassword
+        })
+      });
+
+      const data = await res.json();
+      alert(data.message);
+      await loadClassList();
+    }
+  </script>
+</body>
+</html>

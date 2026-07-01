@@ -51,17 +51,26 @@ body {
   gap: 16px;
 }
 
-input, select, button {
+input, select, button, textarea {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
   font-size: 1rem;
   margin-top: 8px;
+  border: 1px solid #d1d5db;
 }
 
 button {
   border: none;
   cursor: pointer;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.big-textarea {
+  min-height: 220px;
 }
 
 .primary-btn {
@@ -77,6 +86,30 @@ button {
 .back-btn {
   background: #ef4444;
   color: white;
+}
+
+.small-action-btn {
+  width: auto;
+  display: inline-block;
+  white-space: nowrap;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+
+.small-delete-btn {
+  width: auto;
+  display: inline-block;
+  white-space: nowrap;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 6px;
 }
 
 .hidden {
@@ -200,7 +233,16 @@ button {
 }
 
 .reservation-actions {
-  min-width: 140px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.reservation-actions button {
+  width: auto;
+  display: inline-block;
+  white-space: nowrap;
 }
 
 @media (max-width: 700px) {
