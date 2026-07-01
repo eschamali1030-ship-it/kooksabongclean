@@ -1,12 +1,23 @@
-let currentDate = new Date();
+let allClasses = [];
+let selectedGrade = null;
+let selectedClassNo = null;
+let classVerified = false;
 let currentMode = null;
 let currentUser = "";
+let currentDate = new Date();
 
-const entrySection = document.getElementById("entrySection");
-const appSection = document.getElementById("appSection");
+const gradeSelect = document.getElementById("gradeSelect");
+const classSelect = document.getElementById("classSelect");
+const accessPasswordInput = document.getElementById("accessPasswordInput");
+const verifyClassBtn = document.getElementById("verifyClassBtn");
+const modeBox = document.getElementById("modeBox");
+const classInfoText = document.getElementById("classInfoText");
 const studentSelect = document.getElementById("studentSelect");
 const enterReserveBtn = document.getElementById("enterReserveBtn");
 const enterViewBtn = document.getElementById("enterViewBtn");
+
+const entrySection = document.getElementById("entrySection");
+const appSection = document.getElementById("appSection");
 const backBtn = document.getElementById("backBtn");
 const monthTitle = document.getElementById("monthTitle");
 const calendar = document.getElementById("calendar");
@@ -25,8 +36,64 @@ document.getElementById("nextMonthBtn").addEventListener("click", () => {
   renderCalendar();
 });
 
+backBtn.addEventListener("click", () => {
+  appSection.classList.add("hidden");
+  entrySection.classList.remove("hidden");
+  selectedDateInfo.innerHTML = "날짜를 선택하세요.";
+});
+
+gradeSelect.addEventListener("change", () => {
+  renderClassOptions();
+  clearClassVerification();
+});
+
+classSelect.addEventListener("change", () => {
+  clearClassVerification();
+});
+
+verifyClassBtn.addEventListener("click", async () => {
+  selectedGrade = Number(gradeSelect.value);
+  selectedClassNo = Number(classSelect.value);
+  const password = accessPasswordInput.value;
+
+  if (!selectedGrade || !selectedClassNo) {
+    alert("학년과 반을 먼저 선택해주세요.");
+    return;
+  }
+
+  const res = await fetch("/api/class/access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grade: selectedGrade,
+      classNo: selectedClassNo,
+      password
+    })
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    alert(data.message || "반 접속 실패");
+    return;
+  }
+
+  classVerified = true;
+  classInfoText.textContent = `${selectedGrade}학년 ${selectedClassNo}반 접속 확인 완료`;
+  modeBox.classList.remove("hidden");
+
+  await loadStudents();
+  await loadTodayInfo();
+});
+
 enterReserveBtn.addEventListener("click", () => {
   currentUser = studentSelect.value;
+
+  if (!classVerified) {
+    alert("먼저 반 접속 확인을 해주세요.");
+    return;
+  }
+
   if (!currentUser) {
     alert("학생을 선택해주세요.");
     return;
@@ -37,30 +104,22 @@ enterReserveBtn.addEventListener("click", () => {
 });
 
 enterViewBtn.addEventListener("click", () => {
+  if (!classVerified) {
+    alert("먼저 반 접속 확인을 해주세요.");
+    return;
+  }
+
   currentMode = "view";
   currentUser = "";
   startApp();
 });
 
-backBtn.addEventListener("click", () => {
-  entrySection.classList.remove("hidden");
-  appSection.classList.add("hidden");
-  selectedDateInfo.innerHTML = "날짜를 선택하세요.";
-});
-
-function startApp() {
-  entrySection.classList.add("hidden");
-  appSection.classList.remove("hidden");
-
-  if (currentMode === "reserve") {
-    modeBadge.textContent = "예약 모드";
-    userInfo.textContent = `${currentUser}님으로 접속 중`;
-  } else {
-    modeBadge.textContent = "조회 모드";
-    userInfo.textContent = "예약 현황 조회 중";
-  }
-
-  renderCalendar();
+function clearClassVerification() {
+  classVerified = false;
+  modeBox.classList.add("hidden");
+  studentSelect.innerHTML = `<option value="">학생 선택</option>`;
+  classInfoText.textContent = "";
+  todayInfo.textContent = "반을 선택하면 오늘 청소 담당이 표시됩니다.";
 }
 
 function formatDate(date) {
@@ -70,29 +129,86 @@ function formatDate(date) {
   return `${y}-${m}-${d}`;
 }
 
+async function loadClasses() {
+  const res = await fetch("/api/classes");
+  const data = await res.json();
+
+  allClasses = data.classes || [];
+
+  const grades = [...new Set(allClasses.map(item => item.grade))].sort((a, b) => a - b);
+
+  gradeSelect.innerHTML =
+    `<option value="">학년 선택</option>` +
+    grades.map(grade => `<option value="${grade}">${grade}학년</option>`).join("");
+
+  classSelect.innerHTML = `<option value="">반 선택</option>`;
+}
+
+function renderClassOptions() {
+  const grade = Number(gradeSelect.value);
+
+  if (!grade) {
+    classSelect.innerHTML = `<option value="">반 선택</option>`;
+    return;
+  }
+
+  const classes = allClasses
+    .filter(item => item.grade === grade)
+    .map(item => item.class_no)
+    .sort((a, b) => a - b);
+
+  classSelect.innerHTML =
+    `<option value="">반 선택</option>` +
+    classes.map(classNo => `<option value="${classNo}">${classNo}반</option>`).join("");
+}
+
 async function loadStudents() {
-  const res = await fetch("/api/students");
+  const res = await fetch(`/api/students?grade=${selectedGrade}&classNo=${selectedClassNo}`);
   const data = await res.json();
 
   studentSelect.innerHTML =
     `<option value="">학생 선택</option>` +
-    data.students.map(s => `<option value="${s}">${s}</option>`).join("");
+    (data.students || []).map(name => `<option value="${name}">${name}</option>`).join("");
 }
 
 async function loadTodayInfo() {
-  const res = await fetch("/api/today");
+  if (!selectedGrade || !selectedClassNo) return;
+
+  const res = await fetch(`/api/today?grade=${selectedGrade}&classNo=${selectedClassNo}`);
   const data = await res.json();
 
+  if (!res.ok) {
+    todayInfo.textContent = "오늘 청소 담당 정보를 불러오지 못했습니다.";
+    return;
+  }
+
   if (data.blocked) {
-    todayInfo.textContent = data.holidayName
-      ? `오늘(${data.date})은 ${data.holidayName}로 청소 없음`
-      : `오늘(${data.date})은 주말로 청소 없음`;
+    if (data.holidayName) {
+      todayInfo.textContent = `오늘(${data.date})은 ${data.holidayName}로 청소 없음`;
+    } else {
+      todayInfo.textContent = `오늘(${data.date})은 주말로 청소 없음`;
+    }
     return;
   }
 
   todayInfo.textContent = data.cleaners.length
-    ? `오늘(${data.date}) 청소 담당: ${data.cleaners.join(", ")}`
-    : `오늘(${data.date}) 청소 담당자가 아직 없습니다.`;
+    ? `오늘(${data.date}) ${selectedGrade}학년 ${selectedClassNo}반 청소 담당: ${data.cleaners.join(", ")}`
+    : `오늘(${data.date}) ${selectedGrade}학년 ${selectedClassNo}반 청소 담당자가 아직 없습니다.`;
+}
+
+function startApp() {
+  entrySection.classList.add("hidden");
+  appSection.classList.remove("hidden");
+
+  if (currentMode === "reserve") {
+    modeBadge.textContent = "예약 모드";
+    userInfo.textContent = `${selectedGrade}학년 ${selectedClassNo}반 / ${currentUser}`;
+  } else {
+    modeBadge.textContent = "조회 모드";
+    userInfo.textContent = `${selectedGrade}학년 ${selectedClassNo}반 조회 중`;
+  }
+
+  renderCalendar();
 }
 
 async function renderCalendar() {
@@ -101,11 +217,11 @@ async function renderCalendar() {
 
   monthTitle.textContent = `${year}년 ${month}월`;
 
-  const res = await fetch(`/api/reservations?year=${year}&month=${month}`);
+  const res = await fetch(`/api/reservations?grade=${selectedGrade}&classNo=${selectedClassNo}&year=${year}&month=${month}`);
   const data = await res.json();
 
-  const reservations = data.reservations;
-  const holidays = data.holidays;
+  const reservations = data.reservations || {};
+  const holidays = data.holidays || {};
 
   calendar.innerHTML = "";
 
@@ -139,6 +255,7 @@ async function renderCalendar() {
     cell.classList.add("day-cell");
 
     let statusText = "";
+
     if (isWeekend || isHoliday) {
       cell.classList.add("holiday-cell");
       statusText = isHoliday ? holidays[dateStr] : "주말";
@@ -200,7 +317,12 @@ async function makeReservation(dateStr) {
   const res = await fetch("/api/reserve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: currentUser, date: dateStr })
+    body: JSON.stringify({
+      grade: selectedGrade,
+      classNo: selectedClassNo,
+      name: currentUser,
+      date: dateStr
+    })
   });
 
   const data = await res.json();
@@ -216,5 +338,4 @@ async function makeReservation(dateStr) {
   selectedDateInfo.innerHTML = `<p>${dateStr} 예약 완료</p>`;
 }
 
-loadStudents();
-loadTodayInfo();
+loadClasses();

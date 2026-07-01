@@ -1,7 +1,7 @@
 {
   "name": "cleaning-reservation",
-  "version": "2.0.0",
-  "description": "학생 청소 날짜 예약 시스템",
+  "version": "3.0.0",
+  "description": "학년/반 기반 청소 예약 시스템",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
