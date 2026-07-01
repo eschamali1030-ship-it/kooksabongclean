@@ -32,11 +32,14 @@
       <section class="entry-box">
         <h3>학급 구조 생성</h3>
 
-        <label for="gradeCountInput">학년 수</label>
-        <input type="number" id="gradeCountInput" min="1" placeholder="예: 3" />
+<label for="classCount1Input">1학년 반 수</label>
+<input type="number" id="classCount1Input" min="0" placeholder="예: 5" />
 
-        <label for="classCountInput">반 수</label>
-        <input type="number" id="classCountInput" min="1" placeholder="예: 5" />
+<label for="classCount2Input">2학년 반 수</label>
+<input type="number" id="classCount2Input" min="0" placeholder="예: 5" />
+
+<label for="classCount3Input">3학년 반 수</label>
+<input type="number" id="classCount3Input" min="0" placeholder="예: 5" />
 
         <button id="setupClassesBtn" class="primary-btn">학급 구조 생성</button>
       </section>
@@ -64,8 +67,9 @@
     const superLoginMessage = document.getElementById("superLoginMessage");
     const superAdminPanel = document.getElementById("superAdminPanel");
 
-    const gradeCountInput = document.getElementById("gradeCountInput");
-    const classCountInput = document.getElementById("classCountInput");
+    const classCount1Input = document.getElementById("classCount1Input");
+    const classCount2Input = document.getElementById("classCount2Input");
+    const classCount3Input = document.getElementById("classCount3Input");
     const setupClassesBtn = document.getElementById("setupClassesBtn");
     const superClassList = document.getElementById("superClassList");
     const downloadYearCsvBtn = document.getElementById("downloadYearCsvBtn");
@@ -97,18 +101,21 @@
     });
 
     setupClassesBtn.addEventListener("click", async () => {
-      const gradeCount = Number(gradeCountInput.value);
-      const classCount = Number(classCountInput.value);
+const classCount1 = Number(classCount1Input.value);
+const classCount2 = Number(classCount2Input.value);
+const classCount3 = Number(classCount3Input.value);
 
-      const res = await fetch("/api/superadmin/setup-classes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: superAdminPassword,
-          gradeCount,
-          classCount
-        })
-      });
+const res = await fetch("/api/superadmin/setup-classes", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    password: superAdminPassword,
+    classCount1,
+    classCount2,
+    classCount3
+  })
+});
+
 
       const data = await res.json();
       alert(data.message);

@@ -199,23 +199,26 @@ app.post("/api/superadmin/login", (req, res) => {
  */
 app.post("/api/superadmin/setup-classes", async (req, res) => {
   try {
-    const { password, gradeCount, classCount } = req.body;
+app.post("/api/superadmin/setup-classes", async (req, res) => {
+  try {
+    const { password, classCount1, classCount2, classCount3 } = req.body;
 
     if (password !== SUPER_ADMIN_PASSWORD) {
       return res.status(401).json({ message: "통합 관리자 인증 실패" });
     }
 
-    const gCount = Number(gradeCount);
-    const cCount = Number(classCount);
+    const counts = {
+      1: Number(classCount1) || 0,
+      2: Number(classCount2) || 0,
+      3: Number(classCount3) || 0
+    };
 
-    if (!gCount || !cCount || gCount < 1 || cCount < 1) {
-      return res.status(400).json({ message: "학년 수와 반 수를 올바르게 입력해주세요." });
+    if (counts[1] < 0 || counts[2] < 0 || counts[3] < 0) {
+      return res.status(400).json({ message: "반 수를 올바르게 입력해주세요." });
     }
 
-    for (let grade = 1; grade <= gCount; grade++) {
-      for (let classNo = 1; classNo <= cCount; classNo++) {
-        const subPassword = grade === 2 && classNo === 4 ? "1030" : "";
-
+    for (const grade of [1, 2, 3]) {
+      for (let classNo = 1; classNo <= counts[grade]; classNo++) {
         await pool.query(
           `
           INSERT INTO classes (grade, class_no, sub_admin_password)
@@ -223,10 +226,17 @@ app.post("/api/superadmin/setup-classes", async (req, res) => {
           ON CONFLICT (grade, class_no)
           DO NOTHING
           `,
-          [grade, classNo, subPassword]
+          [grade, classNo, ""]
         );
       }
     }
+
+    res.json({ message: "학년별 학급 구조 생성 완료" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "학급 구조 생성 실패" });
+  }
+});
 
     res.json({ message: "학급 구조 생성 완료" });
   } catch (error) {
