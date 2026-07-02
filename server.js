@@ -122,6 +122,44 @@ async function initDb() {
     );
   `);
 
+  // [자동 보정] 낡은 DB에 남아있는 잘못된 규칙(이름 전체 UNIQUE) 제거
+  // 예전 버전에서 students(name)에 UNIQUE가 걸려 동명이인/재저장 시 저장 실패가 났음.
+  // 아래 코드는 그 낡은 규칙을 자동으로 찾아 떼어내고, 올바른 규칙만 남긴다. (데이터는 지우지 않음)
+  try {
+    const badConstraints = await pool.query(`
+      SELECT con.conname
+      FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid
+      JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY(con.conkey)
+      WHERE rel.relname = 'students'
+        AND con.contype = 'u'
+        AND array_length(con.conkey, 1) = 1
+        AND att.attname = 'name'
+    `);
+    for (const row of badConstraints.rows) {
+      console.log("낡은 UNIQUE 제약 제거:", row.conname);
+      await pool.query(`ALTER TABLE students DROP CONSTRAINT IF EXISTS "${row.conname}"`);
+    }
+    // 혹시 인덱스 형태로 남아있으면 그것도 제거 (관례상 이름)
+    await pool.query(`DROP INDEX IF EXISTS students_name_key`);
+    // 올바른 규칙 보장 (같은 반 안에서만 이름 중복 금지)
+    const okConstraint = await pool.query(`
+      SELECT 1
+      FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid
+      WHERE rel.relname = 'students'
+        AND con.contype = 'u'
+        AND array_length(con.conkey, 1) = 2
+    `);
+    if (okConstraint.rowCount === 0) {
+      await pool.query(`ALTER TABLE students ADD CONSTRAINT students_class_id_name_key UNIQUE (class_id, name)`);
+      console.log("올바른 UNIQUE(class_id, name) 규칙 추가 완료");
+    }
+    console.log("students 테이블 제약 자동 보정 완료");
+  } catch (migErr) {
+    console.error("students 제약 자동 보정 중 경고:", migErr.message);
+  }
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS reservations (
       id SERIAL PRIMARY KEY,
@@ -148,6 +186,22 @@ async function initDb() {
   // 이미 컬럼이 있으면 아무 일도 일어나지 않고, 없을 때만 추가됩니다. (데이터 보존)
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS class_id INTEGER`);
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS name VARCHAR(100)`);
+
+  // === [자동 수정] 학생 명렬표 저장 실패(duplicate key students_name_key) 해결 ===
+  // 예전에 만들어진 낡은 규칙: 이름이 전교에서 유일해야 함 -> 동명이인/재저장 시 저장 실패
+  // 아래 코드가 그 낡은 규칙을 떼어내고, 올바른 규칙(같은 반 안에서만 중복 금지)으로 교체함. 데이터는 유지됨.
+  await pool.query(`ALTER TABLE students DROP CONSTRAINT IF EXISTS students_name_key`);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'students_class_id_name_key'
+      ) THEN
+        ALTER TABLE students ADD CONSTRAINT students_class_id_name_key UNIQUE (class_id, name);
+      END IF;
+    END $$;
+  `);
+  // === [자동 수정 끝] ===
 
   await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS class_id INTEGER`);
   await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS date VARCHAR(10)`);
