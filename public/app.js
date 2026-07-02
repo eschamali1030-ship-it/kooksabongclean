@@ -5,6 +5,7 @@ let classVerified = false;
 let currentMode = null;
 let currentUser = "";
 let currentDate = new Date();
+let currentMaxReservations = 2;
 
 const gradeSelect = document.getElementById("gradeSelect");
 const classSelect = document.getElementById("classSelect");
@@ -222,6 +223,8 @@ async function renderCalendar() {
 
   const reservations = data.reservations || {};
   const holidays = data.holidays || {};
+  const maxReservations = Number(data.maxReservations || 2);
+  currentMaxReservations = maxReservations;
 
   calendar.innerHTML = "";
 
@@ -259,12 +262,12 @@ async function renderCalendar() {
     if (isWeekend || isHoliday) {
       cell.classList.add("holiday-cell");
       statusText = isHoliday ? holidays[dateStr] : "주말";
-    } else if (names.length >= 2) {
+    } else if (names.length >= maxReservations) {
       cell.classList.add("full-cell");
-      statusText = `마감 (${names.length}/2)`;
-    } else if (names.length === 1) {
+      statusText = `마감 (${names.length}/${maxReservations})`;
+    } else if (names.length > 0) {
       cell.classList.add("partial-cell");
-      statusText = "1명 예약";
+      statusText = `${names.length}명 예약`;
     } else {
       cell.classList.add("available-cell");
       statusText = "예약 가능";
@@ -293,11 +296,11 @@ function showDateDetails(dateStr, names, isWeekend, isHoliday, holidayName) {
   }
 
   html += `<p><strong>예약자:</strong> ${names.length ? names.join(", ") : "없음"}</p>`;
-  html += `<p><strong>현재 상태:</strong> ${names.length}/2명 예약</p>`;
+  html += `<p><strong>현재 상태:</strong> ${names.length}/${currentMaxReservations}명 예약</p>`;
 
   if (currentMode === "reserve") {
     const alreadyReserved = names.includes(currentUser);
-    const isFull = names.length >= 2;
+    const isFull = names.length >= currentMaxReservations;
 
     if (alreadyReserved) {
       html += `<p>이미 이 날짜를 예약했습니다. 예약 취소는 관리자만 가능합니다.</p>`;

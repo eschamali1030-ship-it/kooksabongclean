@@ -186,12 +186,7 @@
         subAdminClassInfo.textContent = `${selectedGrade}학년 ${selectedClassNo}반 관리 중`;
 
         await loadDashboard();
-
-        try {
-          renderAssignCalendar();
-        } catch (error) {
-          alert("달력 렌더링 중 오류가 발생했습니다.\n\n상세: " + error.message);
-        }
+        await renderAssignCalendar();
       } catch (error) {
         alert("로그인 처리 중 오류가 발생했습니다.\n\n상세: " + error.message);
       }
@@ -259,11 +254,7 @@
 
       if (res.ok) {
         await loadDashboard();
-        try {
-          renderAssignCalendar();
-        } catch (error) {
-          alert("달력 렌더링 중 오류가 발생했습니다.\n\n상세: " + error.message);
-        }
+        await renderAssignCalendar();
       }
     });
 
@@ -300,11 +291,7 @@
         selectedAssignDates.clear();
         updateSelectedAssignDates();
         await loadDashboard();
-        try {
-          renderAssignCalendar();
-        } catch (error) {
-          alert("달력 렌더링 중 오류가 발생했습니다.\n\n상세: " + error.message);
-        }
+        await renderAssignCalendar();
       }
     });
 
