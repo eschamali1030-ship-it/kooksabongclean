@@ -45,6 +45,13 @@
         <button id="saveAccessPasswordBtn" class="primary-btn">반 접속 비밀번호 저장</button>
       </section>
 
+<section class="entry-box">
+  <h3>최대 예약 인원 설정</h3>
+  <label for="maxReservationsInput">하루 최대 예약 가능 인원수</label>
+  <input type="number" id="maxReservationsInput" min="1" placeholder="예: 2" />
+  <button id="saveMaxReservationsBtn" class="primary-btn">최대 예약 인원 저장</button>
+</section>
+
       <section class="entry-box">
         <h3>학생 명렬표 관리</h3>
         <p>한 줄에 한 명씩 입력하세요.</p>
@@ -116,6 +123,8 @@
     const saveAccessPasswordBtn = document.getElementById("saveAccessPasswordBtn");
     const studentListTextarea = document.getElementById("studentListTextarea");
     const saveStudentListBtn = document.getElementById("saveStudentListBtn");
+    const maxReservationsInput = document.getElementById("maxReservationsInput");
+    const saveMaxReservationsBtn = document.getElementById("saveMaxReservationsBtn");
 
     const assignStudentSelect = document.getElementById("assignStudentSelect");
     const assignMonthTitle = document.getElementById("assignMonthTitle");
@@ -190,6 +199,28 @@
           accessPassword
         })
       });
+
+saveMaxReservationsBtn.addEventListener("click", async () => {
+  const maxReservations = Number(maxReservationsInput.value);
+
+  const res = await fetch("/api/subadmin/max-reservations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grade: selectedGrade,
+      classNo: selectedClassNo,
+      password: subAdminPassword,
+      maxReservations
+    })
+  });
+
+  const data = await res.json();
+  alert(data.message);
+
+  if (res.ok) {
+    await loadDashboard();
+  }
+});
 
       const data = await res.json();
       alert(data.message);
@@ -306,6 +337,7 @@
       currentReservations = data.reservations || {};
 
       classAccessPasswordInput.value = data.classInfo.accessPassword || "";
+      maxReservationsInput.value = data.classInfo.maxReservations || 2;
       studentListTextarea.value = currentStudents.join("\n");
 
       assignStudentSelect.innerHTML =
