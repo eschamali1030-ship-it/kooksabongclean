@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>서브 관리자 페이지</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <div class="container">
@@ -54,9 +55,15 @@
 
       <section class="entry-box">
         <h3>학생 명렬표 관리</h3>
-        <p>한 줄에 한 명씩 입력하세요.</p>
+        <p>한 줄에 한 명씩 직접 입력하거나, 아래에서 엑셀/CSV 파일을 올려 자동으로 채울 수 있습니다.</p>
+        <div style="margin-bottom:10px;">
+          <label for="studentExcelInput" style="display:block; margin-bottom:6px; font-weight:bold;">엑셀/CSV로 명렬표 불러오기</label>
+          <input type="file" id="studentExcelInput" accept=".xlsx,.xls,.csv" />
+          <p id="excelImportMessage" style="margin-top:6px; color:#555; font-size:13px;">엑셀 A열(첫 번째 세로줄)에 학생 이름을 한 명씩 적어주세요. 파일을 올리면 아래 칸에 자동으로 채워집니다. (저장 버튼을 눌러야 서버에 저장됩니다.)</p>
+        </div>
         <textarea id="studentListTextarea" class="big-textarea" placeholder="예시&#10;김민준&#10;이서연&#10;박지후"></textarea>
         <button id="saveStudentListBtn" class="primary-btn">학생 명렬표 저장</button>
+        <button id="downloadStudentListBtn" class="secondary-btn" style="margin-top:10px;">학생 명렬표 엑셀(CSV) 다운로드</button>
       </section>
 
       <section class="entry-box">
@@ -127,6 +134,55 @@
 
     const studentListTextarea = document.getElementById("studentListTextarea");
     const saveStudentListBtn = document.getElementById("saveStudentListBtn");
+    const downloadStudentListBtn = document.getElementById("downloadStudentListBtn");
+    const studentExcelInput = document.getElementById("studentExcelInput");
+    const excelImportMessage = document.getElementById("excelImportMessage");
+
+    // 엑셀/CSV 파일을 읽어서 명렬표 입력칸(textarea)에 자동으로 채워주는 기능
+    if (studentExcelInput) {
+      studentExcelInput.addEventListener("change", (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: "array" });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+            const names = [];
+            rows.forEach((row) => {
+              if (!row || row.length === 0) return;
+              const value = row[0];
+              if (value === undefined || value === null) return;
+              const name = String(value).trim();
+              if (!name) return;
+              // 맨 윗줄이 '이름' 같은 제목이면 건너뜀
+              if (names.length === 0 && (name === "이름" || name === "성명" || name === "학생" || name === "학생이름" || name.toLowerCase() === "name")) return;
+              names.push(name);
+            });
+
+            if (names.length === 0) {
+              excelImportMessage.style.color = "#c0392b";
+              excelImportMessage.textContent = "파일에서 학생 이름을 찾지 못했습니다. A열(첫 번째 세로줄)에 이름이 있는지 확인해주세요.";
+              return;
+            }
+
+            studentListTextarea.value = names.join("\n");
+            excelImportMessage.style.color = "#2e7d32";
+            excelImportMessage.textContent = "총 " + names.length + "명을 불러왔습니다. 내용을 확인한 뒤 [학생 명렬표 저장] 버튼을 눌러 저장하세요.";
+          } catch (err) {
+            excelImportMessage.style.color = "#c0392b";
+            excelImportMessage.textContent = "파일을 읽는 중 오류가 발생했습니다. 엑셀(.xlsx) 또는 CSV 파일인지 확인해주세요.";
+          } finally {
+            studentExcelInput.value = "";
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
 
     const assignStudentSelect = document.getElementById("assignStudentSelect");
     const assignMonthTitle = document.getElementById("assignMonthTitle");
@@ -230,6 +286,32 @@
       if (res.ok) {
         await loadDashboard();
       }
+    });
+
+    downloadStudentListBtn.addEventListener("click", () => {
+      if (!selectedGrade || !selectedClassNo) {
+        alert("먼저 서브 관리자로 로그인하세요.");
+        return;
+      }
+      if (!currentStudents || currentStudents.length === 0) {
+        alert("저장된 학생 명렬표가 없습니다. 먼저 명렬표를 저장하세요.");
+        return;
+      }
+
+      let csv = "번호,이름\n";
+      currentStudents.forEach((name, i) => {
+        csv += (i + 1) + "," + name + "\n";
+      });
+
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = selectedGrade + "학년" + selectedClassNo + "반_학생명렬표.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     });
 
     saveStudentListBtn.addEventListener("click", async () => {
