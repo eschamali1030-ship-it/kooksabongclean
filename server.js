@@ -103,8 +103,14 @@ async function initDb() {
       class_no INTEGER NOT NULL,
       access_password VARCHAR(100) DEFAULT '',
       sub_admin_password VARCHAR(100) DEFAULT '0000',
+      max_reservations INTEGER DEFAULT 2,
       UNIQUE(grade, class_no)
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE classes
+    ADD COLUMN IF NOT EXISTS max_reservations INTEGER DEFAULT 2
   `);
 
   await pool.query(`
@@ -137,6 +143,26 @@ async function initDb() {
       UNIQUE(class_id, date, name)
     );
   `);
+
+  // === 자동 보정(마이그레이션): 낡은 테이블에 빠진 컬럼을 안전하게 추가 ===
+  // 이미 컬럼이 있으면 아무 일도 일어나지 않고, 없을 때만 추가됩니다. (데이터 보존)
+  await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS class_id INTEGER`);
+  await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS name VARCHAR(100)`);
+
+  await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS class_id INTEGER`);
+  await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS date VARCHAR(10)`);
+  await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS name VARCHAR(100)`);
+  await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+
+  await pool.query(`ALTER TABLE admin_assignments ADD COLUMN IF NOT EXISTS class_id INTEGER`);
+  await pool.query(`ALTER TABLE admin_assignments ADD COLUMN IF NOT EXISTS date VARCHAR(10)`);
+  await pool.query(`ALTER TABLE admin_assignments ADD COLUMN IF NOT EXISTS name VARCHAR(100)`);
+  await pool.query(`ALTER TABLE admin_assignments ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+
+  await pool.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS access_password VARCHAR(100) DEFAULT ''`);
+  await pool.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS sub_admin_password VARCHAR(100) DEFAULT '0000'`);
+  await pool.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS max_reservations INTEGER DEFAULT 2`);
+  // === 자동 보정 끝 ===
 }
 
 async function getClassByGradeAndNo(grade, classNo) {
@@ -194,8 +220,6 @@ app.post("/api/superadmin/login", (req, res) => {
 
 /**
  * 학년별 학급 구조 생성/정리
- * classCount1, classCount2, classCount3 사용
- * 예: 1학년 5반, 2학년 5반, 3학년 4반
  */
 app.post("/api/superadmin/setup-classes", async (req, res) => {
   try {
@@ -227,7 +251,6 @@ app.post("/api/superadmin/setup-classes", async (req, res) => {
     );
     const currentClasses = currentResult.rows;
 
-    // 필요 없는 반 삭제
     for (const cls of currentClasses) {
       const stillNeeded = wanted.some(
         item => item.grade === cls.grade && item.classNo === cls.class_no
@@ -238,16 +261,15 @@ app.post("/api/superadmin/setup-classes", async (req, res) => {
       }
     }
 
-    // 필요한 반 추가
     for (const item of wanted) {
       await pool.query(
         `
-        INSERT INTO classes (grade, class_no, sub_admin_password)
-        VALUES ($1, $2, $3)
+        INSERT INTO classes (grade, class_no, sub_admin_password, max_reservations)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (grade, class_no)
         DO NOTHING
         `,
-        [item.grade, item.classNo, "0000"]
+        [item.grade, item.classNo, "0000", 2]
       );
     }
 
@@ -258,13 +280,10 @@ app.post("/api/superadmin/setup-classes", async (req, res) => {
   }
 });
 
-/**
- * 통합 관리자: 전체 반 목록 조회
- */
 app.get("/api/superadmin/classes", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, grade, class_no, access_password, sub_admin_password
+      `SELECT id, grade, class_no, access_password, sub_admin_password, max_reservations
        FROM classes
        ORDER BY grade ASC, class_no ASC`
     );
@@ -276,9 +295,6 @@ app.get("/api/superadmin/classes", async (req, res) => {
   }
 });
 
-/**
- * 통합 관리자: 특정 반 서브 관리자 비밀번호 설정
- */
 app.post("/api/superadmin/set-subadmin-password", async (req, res) => {
   try {
     const { password, grade, classNo, subAdminPassword } = req.body;
@@ -304,9 +320,6 @@ app.post("/api/superadmin/set-subadmin-password", async (req, res) => {
   }
 });
 
-/**
- * 통합 관리자: 모든 반 서브 관리자 비밀번호 0000으로 초기화
- */
 app.post("/api/superadmin/reset-all-subadmin-passwords", async (req, res) => {
   try {
     const { password } = req.body;
@@ -324,9 +337,6 @@ app.post("/api/superadmin/reset-all-subadmin-passwords", async (req, res) => {
   }
 });
 
-/**
- * 통합 관리자: 연간 CSV 다운로드
- */
 app.get("/api/superadmin/export-year-csv", async (req, res) => {
   try {
     const reservationsResult = await pool.query(`
@@ -367,9 +377,6 @@ app.get("/api/superadmin/export-year-csv", async (req, res) => {
   }
 });
 
-/**
- * 통합 관리자: 예약/배정 전체 초기화
- */
 app.post("/api/superadmin/reset-year-data", async (req, res) => {
   try {
     const { password } = req.body;
@@ -388,9 +395,6 @@ app.post("/api/superadmin/reset-year-data", async (req, res) => {
   }
 });
 
-/**
- * 학생/조회자용: 반 목록
- */
 app.get("/api/classes", async (req, res) => {
   try {
     const classes = await getClasses();
@@ -401,9 +405,6 @@ app.get("/api/classes", async (req, res) => {
   }
 });
 
-/**
- * 학생/조회자용: 반 접속 인증
- */
 app.post("/api/class/access", async (req, res) => {
   try {
     const { grade, classNo, password } = req.body;
@@ -429,9 +430,6 @@ app.post("/api/class/access", async (req, res) => {
   }
 });
 
-/**
- * 학생 목록 가져오기
- */
 app.get("/api/students", async (req, res) => {
   try {
     const grade = Number(req.query.grade);
@@ -450,9 +448,6 @@ app.get("/api/students", async (req, res) => {
   }
 });
 
-/**
- * 월별 예약 조회
- */
 app.get("/api/reservations", async (req, res) => {
   try {
     const grade = Number(req.query.grade);
@@ -492,7 +487,8 @@ app.get("/api/reservations", async (req, res) => {
 
     res.json({
       reservations,
-      holidays: monthHolidays
+      holidays: monthHolidays,
+      maxReservations: Number(targetClass.max_reservations || 2)
     });
   } catch (error) {
     console.error(error);
@@ -500,9 +496,6 @@ app.get("/api/reservations", async (req, res) => {
   }
 });
 
-/**
- * 오늘 청소 담당
- */
 app.get("/api/today", async (req, res) => {
   try {
     const grade = Number(req.query.grade);
@@ -540,9 +533,6 @@ app.get("/api/today", async (req, res) => {
   }
 });
 
-/**
- * 학생 예약
- */
 app.post("/api/reserve", async (req, res) => {
   try {
     const { grade, classNo, name, date } = req.body;
@@ -571,8 +561,10 @@ app.post("/api/reserve", async (req, res) => {
       [targetClass.id, date]
     );
 
-    if (countResult.rows[0].count >= 2) {
-      return res.status(400).json({ message: "해당 날짜는 이미 2명이 예약했습니다." });
+    const maxReservations = Number(targetClass.max_reservations || 2);
+
+    if (countResult.rows[0].count >= maxReservations) {
+      return res.status(400).json({ message: `해당 날짜는 이미 ${maxReservations}명이 예약했습니다.` });
     }
 
     try {
@@ -595,18 +587,12 @@ app.post("/api/reserve", async (req, res) => {
   }
 });
 
-/**
- * 학생 예약 취소 금지
- */
 app.post("/api/cancel", (req, res) => {
   return res.status(403).json({
     message: "학생 예약 취소는 불가능합니다. 관리자만 취소할 수 있습니다."
   });
 });
 
-/**
- * 서브 관리자 로그인
- */
 app.post("/api/subadmin/login", async (req, res) => {
   try {
     const { grade, classNo, password } = req.body;
@@ -632,9 +618,6 @@ app.post("/api/subadmin/login", async (req, res) => {
   }
 });
 
-/**
- * 서브 관리자 대시보드
- */
 app.get("/api/subadmin/dashboard", async (req, res) => {
   try {
     const grade = Number(req.query.grade);
@@ -687,7 +670,8 @@ app.get("/api/subadmin/dashboard", async (req, res) => {
         grade: targetClass.grade,
         classNo: targetClass.class_no,
         accessPassword: targetClass.access_password || "",
-        subAdminPassword: targetClass.sub_admin_password || "0000"
+        subAdminPassword: targetClass.sub_admin_password || "0000",
+        maxReservations: Number(targetClass.max_reservations || 2)
       },
       students,
       reservations,
@@ -695,13 +679,13 @@ app.get("/api/subadmin/dashboard", async (req, res) => {
     });
   } catch (error) {
     console.error("서브 관리자 대시보드 오류:", error);
-    res.status(500).json({ message: "서브 관리자 대시보드 조회 실패" });
+    res.status(500).json({
+      message: "서브 관리자 대시보드 조회 실패",
+      detail: String(error.message || error)
+    });
   }
 });
 
-/**
- * 서브 관리자: 학생 명렬표 저장
- */
 app.post("/api/subadmin/students", async (req, res) => {
   try {
     const { grade, classNo, password, names } = req.body;
@@ -747,9 +731,6 @@ app.post("/api/subadmin/students", async (req, res) => {
   }
 });
 
-/**
- * 서브 관리자: 반 접속 비밀번호 설정
- */
 app.post("/api/subadmin/access-password", async (req, res) => {
   try {
     const { grade, classNo, password, accessPassword } = req.body;
@@ -775,9 +756,37 @@ app.post("/api/subadmin/access-password", async (req, res) => {
   }
 });
 
-/**
- * 서브 관리자: 날짜별 관리자 배정 추가
- */
+app.post("/api/subadmin/max-reservations", async (req, res) => {
+  try {
+    const { grade, classNo, password, maxReservations } = req.body;
+
+    const targetClass = await getClassByGradeAndNo(Number(grade), Number(classNo));
+    if (!targetClass) {
+      return res.status(404).json({ message: "해당 반이 없습니다." });
+    }
+
+    if ((targetClass.sub_admin_password || "0000") !== (password || "")) {
+      return res.status(401).json({ message: "서브 관리자 인증 실패" });
+    }
+
+    const value = Number(maxReservations);
+
+    if (!value || value < 1) {
+      return res.status(400).json({ message: "최대 예약 인원은 1명 이상이어야 합니다." });
+    }
+
+    await pool.query(
+      `UPDATE classes SET max_reservations = $1 WHERE id = $2`,
+      [value, targetClass.id]
+    );
+
+    res.json({ message: "최대 예약 인원 저장 완료" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "최대 예약 인원 저장 실패" });
+  }
+});
+
 app.post("/api/subadmin/assignments", async (req, res) => {
   try {
     const { grade, classNo, password, name, dates } = req.body;
@@ -828,9 +837,6 @@ app.post("/api/subadmin/assignments", async (req, res) => {
   }
 });
 
-/**
- * 서브 관리자: 관리자 배정 삭제
- */
 app.post("/api/subadmin/assignments/delete", async (req, res) => {
   try {
     const { grade, classNo, password, date, name } = req.body;
@@ -857,9 +863,6 @@ app.post("/api/subadmin/assignments/delete", async (req, res) => {
   }
 });
 
-/**
- * 서브 관리자: 예약 개별 삭제
- */
 app.post("/api/subadmin/reservations/delete", async (req, res) => {
   try {
     const { grade, classNo, password, date, name } = req.body;
