@@ -10,7 +10,7 @@
   <div class="container">
     <header class="hero">
       <h1>서브 관리자 페이지</h1>
-      <p>자기 반 학생 명렬표, 반 접속 비밀번호, 예약 및 관리자 배정을 관리합니다.</p>
+      <p>자기 반 학생 명렬표, 반 접속 비밀번호, 최대 예약 인원, 예약 및 관리자 배정을 관리합니다.</p>
     </header>
 
     <section class="today-card">
@@ -45,12 +45,12 @@
         <button id="saveAccessPasswordBtn" class="primary-btn">반 접속 비밀번호 저장</button>
       </section>
 
-<section class="entry-box">
-  <h3>최대 예약 인원 설정</h3>
-  <label for="maxReservationsInput">하루 최대 예약 가능 인원수</label>
-  <input type="number" id="maxReservationsInput" min="1" placeholder="예: 2" />
-  <button id="saveMaxReservationsBtn" class="primary-btn">최대 예약 인원 저장</button>
-</section>
+      <section class="entry-box">
+        <h3>최대 예약 인원 설정</h3>
+        <label for="maxReservationsInput">하루 최대 예약 가능 인원수</label>
+        <input type="number" id="maxReservationsInput" min="1" placeholder="예: 2" />
+        <button id="saveMaxReservationsBtn" class="primary-btn">최대 예약 인원 저장</button>
+      </section>
 
       <section class="entry-box">
         <h3>학생 명렬표 관리</h3>
@@ -121,10 +121,12 @@
 
     const classAccessPasswordInput = document.getElementById("classAccessPasswordInput");
     const saveAccessPasswordBtn = document.getElementById("saveAccessPasswordBtn");
-    const studentListTextarea = document.getElementById("studentListTextarea");
-    const saveStudentListBtn = document.getElementById("saveStudentListBtn");
+
     const maxReservationsInput = document.getElementById("maxReservationsInput");
     const saveMaxReservationsBtn = document.getElementById("saveMaxReservationsBtn");
+
+    const studentListTextarea = document.getElementById("studentListTextarea");
+    const saveStudentListBtn = document.getElementById("saveStudentListBtn");
 
     const assignStudentSelect = document.getElementById("assignStudentSelect");
     const assignMonthTitle = document.getElementById("assignMonthTitle");
@@ -150,40 +152,49 @@
     });
 
     subLoginBtn.addEventListener("click", async () => {
-      selectedGrade = Number(subGradeSelect.value);
-      selectedClassNo = Number(subClassSelect.value);
-      subAdminPassword = subAdminPasswordInput.value;
+      try {
+        selectedGrade = Number(subGradeSelect.value);
+        selectedClassNo = Number(subClassSelect.value);
+        subAdminPassword = subAdminPasswordInput.value;
 
-      if (!selectedGrade || !selectedClassNo) {
-        alert("학년과 반을 선택해주세요.");
-        return;
+        if (!selectedGrade || !selectedClassNo) {
+          alert("학년과 반을 선택해주세요.");
+          return;
+        }
+
+        const res = await fetch("/api/subadmin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            grade: selectedGrade,
+            classNo: selectedClassNo,
+            password: subAdminPassword
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          subLoginMessage.textContent = data.message || "로그인 실패";
+          subLoginMessage.style.color = "yellow";
+          return;
+        }
+
+        subLoginMessage.textContent = "로그인 성공";
+        subLoginMessage.style.color = "white";
+        subAdminPanel.classList.remove("hidden");
+        subAdminClassInfo.textContent = `${selectedGrade}학년 ${selectedClassNo}반 관리 중`;
+
+        await loadDashboard();
+
+        try {
+          renderAssignCalendar();
+        } catch (error) {
+          alert("달력 렌더링 중 오류가 발생했습니다.\n\n상세: " + error.message);
+        }
+      } catch (error) {
+        alert("로그인 처리 중 오류가 발생했습니다.\n\n상세: " + error.message);
       }
-
-      const res = await fetch("/api/subadmin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          grade: selectedGrade,
-          classNo: selectedClassNo,
-          password: subAdminPassword
-        })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        subLoginMessage.textContent = data.message || "로그인 실패";
-        subLoginMessage.style.color = "yellow";
-        return;
-      }
-
-      subLoginMessage.textContent = "로그인 성공";
-      subLoginMessage.style.color = "white";
-      subAdminPanel.classList.remove("hidden");
-      subAdminClassInfo.textContent = `${selectedGrade}학년 ${selectedClassNo}반 관리 중`;
-
-      await loadDashboard();
-      renderAssignCalendar();
     });
 
     saveAccessPasswordBtn.addEventListener("click", async () => {
@@ -200,30 +211,30 @@
         })
       });
 
-saveMaxReservationsBtn.addEventListener("click", async () => {
-  const maxReservations = Number(maxReservationsInput.value);
+      const data = await res.json();
+      alert(data.message);
+    });
 
-  const res = await fetch("/api/subadmin/max-reservations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grade: selectedGrade,
-      classNo: selectedClassNo,
-      password: subAdminPassword,
-      maxReservations
-    })
-  });
+    saveMaxReservationsBtn.addEventListener("click", async () => {
+      const maxReservations = Number(maxReservationsInput.value);
 
-  const data = await res.json();
-  alert(data.message);
-
-  if (res.ok) {
-    await loadDashboard();
-  }
-});
+      const res = await fetch("/api/subadmin/max-reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grade: selectedGrade,
+          classNo: selectedClassNo,
+          password: subAdminPassword,
+          maxReservations
+        })
+      });
 
       const data = await res.json();
       alert(data.message);
+
+      if (res.ok) {
+        await loadDashboard();
+      }
     });
 
     saveStudentListBtn.addEventListener("click", async () => {
@@ -245,8 +256,15 @@ saveMaxReservationsBtn.addEventListener("click", async () => {
 
       const data = await res.json();
       alert(data.message);
-      await loadDashboard();
-      renderAssignCalendar();
+
+      if (res.ok) {
+        await loadDashboard();
+        try {
+          renderAssignCalendar();
+        } catch (error) {
+          alert("달력 렌더링 중 오류가 발생했습니다.\n\n상세: " + error.message);
+        }
+      }
     });
 
     saveAssignmentsBtn.addEventListener("click", async () => {
@@ -278,10 +296,16 @@ saveMaxReservationsBtn.addEventListener("click", async () => {
       const data = await res.json();
       alert(data.message);
 
-      selectedAssignDates.clear();
-      updateSelectedAssignDates();
-      await loadDashboard();
-      renderAssignCalendar();
+      if (res.ok) {
+        selectedAssignDates.clear();
+        updateSelectedAssignDates();
+        await loadDashboard();
+        try {
+          renderAssignCalendar();
+        } catch (error) {
+          alert("달력 렌더링 중 오류가 발생했습니다.\n\n상세: " + error.message);
+        }
+      }
     });
 
     function formatDate(date) {
@@ -292,17 +316,22 @@ saveMaxReservationsBtn.addEventListener("click", async () => {
     }
 
     async function loadClasses() {
-      const res = await fetch("/api/classes");
-      const data = await res.json();
-      allClasses = data.classes || [];
+      try {
+        const res = await fetch("/api/classes");
+        const data = await res.json();
 
-      const grades = [...new Set(allClasses.map(item => item.grade))].sort((a, b) => a - b);
+        allClasses = data.classes || [];
 
-      subGradeSelect.innerHTML =
-        `<option value="">학년 선택</option>` +
-        grades.map(grade => `<option value="${grade}">${grade}학년</option>`).join("");
+        const grades = [...new Set(allClasses.map(item => item.grade))].sort((a, b) => a - b);
 
-      subClassSelect.innerHTML = `<option value="">반 선택</option>`;
+        subGradeSelect.innerHTML =
+          `<option value="">학년 선택</option>` +
+          grades.map(grade => `<option value="${grade}">${grade}학년</option>`).join("");
+
+        subClassSelect.innerHTML = `<option value="">반 선택</option>`;
+      } catch (error) {
+        alert("학급 목록 불러오기 실패\n\n상세: " + error.message);
+      }
     }
 
     function renderClassOptions() {
@@ -324,28 +353,32 @@ saveMaxReservationsBtn.addEventListener("click", async () => {
     }
 
     async function loadDashboard() {
-      const res = await fetch(`/api/subadmin/dashboard?grade=${selectedGrade}&classNo=${selectedClassNo}`);
-      const data = await res.json();
+      try {
+        const res = await fetch(`/api/subadmin/dashboard?grade=${selectedGrade}&classNo=${selectedClassNo}`);
+        const data = await res.json();
 
-      if (!res.ok) {
-        alert(data.message || "대시보드 불러오기 실패");
-        return;
+        if (!res.ok) {
+          alert((data.message || "대시보드 불러오기 실패") + (data.detail ? "\n\n상세: " + data.detail : ""));
+          return;
+        }
+
+        currentStudents = data.students || [];
+        currentAssignments = data.assignments || {};
+        currentReservations = data.reservations || {};
+
+        classAccessPasswordInput.value = data.classInfo.accessPassword || "";
+        maxReservationsInput.value = data.classInfo.maxReservations || 2;
+        studentListTextarea.value = currentStudents.join("\n");
+
+        assignStudentSelect.innerHTML =
+          `<option value="">학생 선택</option>` +
+          currentStudents.map(name => `<option value="${name}">${name}</option>`).join("");
+
+        renderAssignmentList();
+        renderReservationList();
+      } catch (error) {
+        alert("대시보드 불러오기 중 브라우저 오류가 발생했습니다.\n\n상세: " + error.message);
       }
-
-      currentStudents = data.students || [];
-      currentAssignments = data.assignments || {};
-      currentReservations = data.reservations || {};
-
-      classAccessPasswordInput.value = data.classInfo.accessPassword || "";
-      maxReservationsInput.value = data.classInfo.maxReservations || 2;
-      studentListTextarea.value = currentStudents.join("\n");
-
-      assignStudentSelect.innerHTML =
-        `<option value="">학생 선택</option>` +
-        currentStudents.map(name => `<option value="${name}">${name}</option>`).join("");
-
-      renderAssignmentList();
-      renderReservationList();
     }
 
     function renderAssignmentList() {
@@ -411,7 +444,10 @@ saveMaxReservationsBtn.addEventListener("click", async () => {
 
       const data = await res.json();
       alert(data.message);
-      await loadDashboard();
+
+      if (res.ok) {
+        await loadDashboard();
+      }
     }
 
     async function deleteReservation(date, name) {
@@ -431,7 +467,10 @@ saveMaxReservationsBtn.addEventListener("click", async () => {
 
       const data = await res.json();
       alert(data.message);
-      await loadDashboard();
+
+      if (res.ok) {
+        await loadDashboard();
+      }
     }
 
     function updateSelectedAssignDates() {
@@ -446,6 +485,8 @@ saveMaxReservationsBtn.addEventListener("click", async () => {
     }
 
     async function renderAssignCalendar() {
+      if (!selectedGrade || !selectedClassNo) return;
+
       const year = assignCurrentDate.getFullYear();
       const month = assignCurrentDate.getMonth() + 1;
 
